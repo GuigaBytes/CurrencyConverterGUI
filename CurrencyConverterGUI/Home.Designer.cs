@@ -129,7 +129,7 @@
             Controls.Add(convertionButton);
             Controls.Add(textBoxAmount);
             Name = "Home";
-            Text = "Currency Coverter";
+            Text = "Currency Converter";
             Load += Home_Load;
             ResumeLayout(false);
             PerformLayout();
