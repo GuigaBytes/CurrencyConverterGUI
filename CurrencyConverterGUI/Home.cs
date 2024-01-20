@@ -1,5 +1,6 @@
-using CurrencyConverter.Services;
+using CurrencyConverterGUI.Models.Api;
 using CurrencyConverterGUI.Models.AvailableCurrencies;
+using CurrencyConverterGUI.Services.CurrencyConverterService;
 using System.Globalization;
 
 namespace CurrencyConverterGUI
@@ -9,22 +10,39 @@ namespace CurrencyConverterGUI
         public Home()
         {
             InitializeComponent();
-            var currencyItems = CurrencyList.GetItems();
-
-            fromCurrency.Items.AddRange(currencyItems.ToArray());
-            toCurrency.Items.AddRange(currencyItems.ToArray());
-
-            if (currencyItems.Count >= 2)
-            {
-                fromCurrency.SelectedIndex = 0;
-
-                toCurrency.SelectedIndex = 1;
-            }
+            InitializeCurrencyInfo();
         }
 
         private void Home_Load(object sender, EventArgs e)
         {
 
+        }
+
+        private void InitializeCurrencyInfo()
+        {
+            var currencyItems = CurrencyList.GetItems();
+
+            fromCurrency.Items.AddRange(currencyItems.ToArray());
+            toCurrency.Items.AddRange(currencyItems.ToArray());
+
+            var lastRateRequest = ExchangeRateRequestLog.GetLastApiRequest();
+
+            if (lastRateRequest != null)
+            {
+                int fromIndex = currencyItems.FindIndex(item => item.Key == lastRateRequest.FromCurrency);
+                int toIndex = currencyItems.FindIndex(item => item.Key == lastRateRequest.ToCurrency);
+
+                fromCurrency.SelectedIndex = fromIndex != -1 ? fromIndex : 0;
+                toCurrency.SelectedIndex = toIndex != -1 ? toIndex : 1;
+
+                UpdateAmount();
+            }
+            else
+            {
+                fromCurrency.SelectedIndex = currencyItems.Count >= 1 ? 0 : -1;
+                toCurrency.SelectedIndex = currencyItems.Count >= 2 ? 1 : -1;
+                labelRate.Text = "Rate: N/A";
+            }
         }
 
         private void textBoxAmount_TextChanged(object sender, EventArgs e)
@@ -101,7 +119,18 @@ namespace CurrencyConverterGUI
             string fromCurrencyKey = ((CurrencyItem)fromCurrency.SelectedItem).Key;
             string toCurrencyKey = ((CurrencyItem)toCurrency.SelectedItem).Key;
 
-            decimal rate = await ExchangeRateService.GetCurrencyRate(fromCurrencyKey, toCurrencyKey);
+            decimal rate;
+            var lastRequest = ExchangeRateRequestLog.GetLastApiRequest(fromCurrencyKey, toCurrencyKey);
+            if (lastRequest != null && lastRequest.LastRequestTimestamp.Date == DateTime.Now.Date)
+            {
+                rate = lastRequest.Rate;
+            }
+            else
+            {
+                rate = await CurrencyConverterService.GetCurrencyRate(fromCurrencyKey, toCurrencyKey);
+                ExchangeRateRequestLog.RegisterExchangeRateRequest(fromCurrencyKey, toCurrencyKey, rate);
+            }
+
             decimal result = amount * rate;
             string formattedResult = result.ToString("F2", CultureInfo.InvariantCulture);
 
@@ -111,6 +140,12 @@ namespace CurrencyConverterGUI
             textBoxAmount.Enabled = true;
             convertionButton.Enabled = true;
             textBoxAmount.Focus();
+
+            lastRequest = ExchangeRateRequestLog.GetLastApiRequest(fromCurrencyKey, toCurrencyKey);
+
+            labelStatusField.Text = lastRequest != null
+                ? $"Last request: {lastRequest.LastRequestTimestamp.ToString("dd.MM HH:mm")}"
+                : "No previous requests.";
         }
 
         private void invertButton_Click(object sender, EventArgs e)
